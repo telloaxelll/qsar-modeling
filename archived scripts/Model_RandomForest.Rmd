@@ -1,0 +1,92 @@
+---
+title: "Random_Forest_Model"
+author: "Axel Muniz Tello"
+date: "2025-12-03"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Random Forest Model
+
+### Step 0: Install Dependencies
+```{r}
+library(randomForest)
+library(caret)
+```
+
+### Step 1: Load the Dataset
+```{r}
+dataset <- read.csv("/Users/axeltello/Desktop/obesity_clean.csv") # Loasd the dataset
+```
+
+### Step 2: Convert Class to Obese or Not
+```{r}
+dataset$Overweight <- ifelse(dataset$Class >= 3, "Yes", "No") 
+dataset$Overweight <- as.factor(dataset$Overweight)
+
+dataset$Class <- NULL
+```
+
+### Step 3: Train-Test-Split
+```{r}
+set.seed(41)
+train_idx <- createDataPartition(dataset$Overweight, p = 0.8, list = FALSE)
+
+train_data <- dataset[train_idx, ]
+test_data  <- dataset[-train_idx, ]
+```
+
+### Step 4: Random Forest Model: 
+```{r}
+rf_model <- randomForest(
+  Overweight ~ ., 
+  data = train_data,
+  ntree = 500,
+  mtry = floor(sqrt(ncol(train_data) - 1)),
+  importance = TRUE
+)
+
+print(rf_model)
+```
+### Step 5: Evaluation
+```{r}
+pred <- predict(rf_model, newdata = test_data)
+
+confusionMatrix(pred, test_data$Overweight)
+
+```
+### Extra: 
+```{r}
+plot(rf_model) # plots error with the # of trees
+```
+```{r}
+library(ggplot2)
+
+imp <- importance(rf_model)
+imp_df <- data.frame(
+  Feature = rownames(imp),
+  Importance = imp[, "MeanDecreaseGini"]
+)
+
+ggplot(imp_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Random Forest Feature Importance",
+       x = "Feature",
+       y = "Mean Decrease Gini")
+
+```
+
+```{r}
+library(pROC)
+
+prob <- predict(rf_model, test_data, type="prob")[, "Yes"]
+roc_obj <- roc(test_data$Overweight, prob)
+plot(roc_obj)
+auc(roc_obj)
+
+```
+

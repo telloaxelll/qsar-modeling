@@ -1,0 +1,143 @@
+---
+title: "BioDataAnalysis"
+author: "Axel Muniz Tello"
+date: "2025-11-11"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load the Dataset
+dataframe <- read.csv("/Users/axeltello/Desktop/BioData.csv") # change directory of file to your local file
+head(dataframe)
+```
+
+```{r}
+summary(dataframe[, 1:7]) # samples of morgan predictors [0,5]
+```
+
+# Regression Model (1) -- Standard Linear Regression :
+```{r}
+standard_regression <- lm(pIC50 ~ ., data = dataframe[, -1]) # linear regression model
+```
+
+Show the summary statistics of the regression model
+```{r}
+summary(standard_regression)
+```
+
+```{r}
+# Plot performance for standard regression
+plot(standard_regression)
+
+# Comments: 
+# ---------
+# Multiple points on the line indicate colinearity in the data due to the sparsity with limited excitation
+# need a model that will be treated as a regression model, but classified using a log function for determining 
+# factors of valley fever.
+```
+### Computation Notes: 
+- Most rows have a NA or NaN $\implies$ multicollinearity, and no prediction
+- We will use LASSO instead to see how it can handle the dataset
+
+# Regression Model (2) -- Lasson Regression Model:
+```{r}
+library(glmnet)
+
+## 1) start from your original data
+df <- dataframe
+
+## 2) make sure pIC50 is numeric
+df$pIC50 <- as.numeric(df$pIC50)
+
+## 3) drop rows with missing target
+df <- df[!is.na(df$pIC50), ]
+
+## 4) grab only the morgan_* predictors
+x_all <- df[, grepl("^morgan_", names(df)), drop = FALSE]
+
+## 5) drop predictors that are constant (all 0 or all 1)
+varying <- apply(x_all, 2, function(z) length(unique(z)) > 1)
+x <- as.matrix(x_all[, varying, drop = FALSE])
+
+## 6) response
+y <- df$pIC50
+
+## 7) fit LASSO with CV
+set.seed(1)
+cv_model <- cv.glmnet(x, y, alpha = 1)     # LASSO
+best_lambda <- cv_model$lambda.min
+
+## 8) final model at best lambda
+lasso <- glmnet(x, y, alpha = 1, lambda = best_lambda)
+
+## 9) look at coefficients (nonzero ones are the important bits)
+coef(lasso, s = 0.0001)
+
+
+```
+
+```{r}
+plot(lasso)
+
+# Computational Notes: 
+# --------------------
+# Not enough data is able to be modeled because we run into the same issue with sparsity of data and low excitation
+```
+
+```{r}
+summary(lasso) # useless information
+```
+
+
+ 
+# Regression Model (2) -- Ridge Regression Model:
+```{r}
+library(glmnet)
+
+X <- as.matrix(df[, grepl("^morgan_", names(df))])
+y <- df$pIC50
+
+set.seed(1)
+cv_ridge <- cv.glmnet(X, y, alpha = 0)   # alpha=0 → Ridge
+best_lambda_ridge <- cv_ridge$lambda.min
+
+ridge_model <- glmnet(X, y, alpha = 0, lambda = best_lambda_ridge)
+coef(ridge_model)
+
+```
+```{r}
+plot(ridge_model)
+```
+
+# Regression Model (3) -- Elastic: 
+```{r}
+library(glmnet)
+
+X <- as.matrix(df[, grepl("^morgan_", names(df))])
+y <- df$pIC50  # or 0/1 if classification
+
+cv_model <- cv.glmnet(X, y, alpha = 0.5)  # mix of LASSO + Ridge
+best_lambda <- cv_model$lambda.min
+model <- glmnet(X, y, alpha = 0.5, lambda = best_lambda)
+
+coef_table <- as.matrix(coef(model))
+nonzero <- coef_table[coef_table[,1] != 0, , drop=FALSE]
+head(nonzero)
+
+plot(cv_model)
+
+# Computational Notes: 
+# --------------------
+# Console provides intuitive possible markers for fighting valley fever. 
+# elastic balances both ridge and and lassso with alpha set to 0.5
+```
+
+```{r}
+summary(cv_model)
+```
+
+
